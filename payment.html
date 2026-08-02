@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>YorumAI Pro — Kart Bilgileri</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #faf9f7; margin: 0; padding: 24px; color: #1f1b16; }
+  .card { max-width: 480px; margin: 0 auto; background: #fff; border: 1px solid #e7e3de; border-radius: 12px; padding: 24px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.sub { color: #6b6459; font-size: 13px; margin: 0 0 20px; }
+  #error { color: #d1362f; font-size: 13px; text-align: center; }
+  #loading { color: #6b6459; font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Kart Bilgileriniz</h1>
+    <p class="sub">Bilgileriniz doğrudan iyzico'nun güvenli altyapısına gönderilir.</p>
+    <p id="loading">Yükleniyor...</p>
+    <p id="error"></p>
+    <div id="iyzipay-checkout-form" class="responsive"></div>
+  </div>
+
+  <script>
+    // NOT: Bu, senin Supabase projenin herkese açık (publishable) anahtarıdır,
+    // gizli değildir — extension'ın diğer dosyalarında da aynı şekilde kullanılıyor.
+    const SUPABASE_FUNCTIONS_URL = "https://hajykrsafwsouoebnfrc.supabase.co/functions/v1";
+    const ANON_KEY = "sb_publishable_qm8cVXe03sp-4EAEHNirFw_QmB1xGGf";
+
+    function injectScriptContent(container, htmlWithScript) {
+      container.innerHTML = htmlWithScript;
+      container.querySelectorAll("script").forEach((oldScript) => {
+        const newScript = document.createElement("script");
+        if (oldScript.src) newScript.src = oldScript.src;
+        else newScript.textContent = oldScript.textContent;
+        oldScript.replaceWith(newScript);
+      });
+    }
+
+    async function loadPaymentForm() {
+      const params = new URLSearchParams(window.location.search);
+      const conversationId = params.get("order");
+      const loadingEl = document.getElementById("loading");
+      const errorEl = document.getElementById("error");
+
+      if (!conversationId) {
+        loadingEl.style.display = "none";
+        errorEl.textContent = "Geçersiz bağlantı — sipariş bilgisi eksik.";
+        return;
+      }
+
+      try {
+        const res = await fetch(SUPABASE_FUNCTIONS_URL + "/get-checkout-content", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: ANON_KEY },
+          body: JSON.stringify({ conversationId }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Ödeme formu yüklenemedi.");
+        }
+        loadingEl.style.display = "none";
+        const container = document.getElementById("iyzipay-checkout-form");
+        injectScriptContent(container, data.checkoutFormContent);
+      } catch (err) {
+        loadingEl.style.display = "none";
+        errorEl.textContent = err.message || "Bir hata oluştu.";
+      }
+    }
+
+    loadPaymentForm();
+  </script>
+</body>
+</html>
