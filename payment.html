@@ -25,8 +25,8 @@
   <script>
     // NOT: Bu, senin Supabase projenin herkese açık (publishable) anahtarıdır,
     // gizli değildir — extension'ın diğer dosyalarında da aynı şekilde kullanılıyor.
-    const SUPABASE_FUNCTIONS_URL = "https://hajykrsafwsouoebnfrc.supabase.co/functions/v1";
-    const ANON_KEY = "sb_publishable_qm8cVXe03sp-4EAEHNirFw_QmB1xGGf";
+    const SUPABASE_FUNCTIONS_URL = "https://vfjsazbfwezzpktqxnmo.supabase.co/functions/v1";
+    const ANON_KEY = "sb_publishable_80agFjI2JZ9QW4adDO3elA_CmzNzuyn";
 
     function injectScriptContent(container, htmlWithScript) {
       container.innerHTML = htmlWithScript;
@@ -50,23 +50,41 @@
         return;
       }
 
-      try {
-        const res = await fetch(SUPABASE_FUNCTIONS_URL + "/get-checkout-content", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: ANON_KEY },
-          body: JSON.stringify({ conversationId }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || "Ödeme formu yüklenemedi.");
+      // 2026-09-03: Gerçek bir testte, sayfa açılır açılmaz atılan bu istek
+      // bazen "Failed to fetch" (net::ERR_BLOCKED_BY_CLIENT) ile başarısız
+      // oluyordu — ama aynı istek bir kaç saniye sonra elle tekrar
+      // denendiğinde hep başarılı oluyordu (muhtemelen bir tarayıcı
+      // koruması "sayfa yüklenir yüklenmez atılan üçüncü taraf istekleri"
+      // şüpheli buluyor). Kalıcı bir engel değil, geçici — bu yüzden kesin
+      // sebebi çözmek yerine basitçe birkaç kez, kısa bir bekleyişle
+      // tekrar deniyoruz; kullanıcı "Failed to fetch" gibi teknik bir
+      // hatayı görmeden önce.
+      const MAX_ATTEMPTS = 3;
+      let lastError = null;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          const res = await fetch(SUPABASE_FUNCTIONS_URL + "/get-checkout-content", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: ANON_KEY },
+            body: JSON.stringify({ conversationId }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || "Ödeme formu yüklenemedi.");
+          }
+          loadingEl.style.display = "none";
+          const container = document.getElementById("iyzipay-checkout-form");
+          injectScriptContent(container, data.checkoutFormContent);
+          return; // başarılı, döngüden çık
+        } catch (err) {
+          lastError = err;
+          if (attempt < MAX_ATTEMPTS) {
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+          }
         }
-        loadingEl.style.display = "none";
-        const container = document.getElementById("iyzipay-checkout-form");
-        injectScriptContent(container, data.checkoutFormContent);
-      } catch (err) {
-        loadingEl.style.display = "none";
-        errorEl.textContent = err.message || "Bir hata oluştu.";
       }
+      loadingEl.style.display = "none";
+      errorEl.textContent = (lastError && lastError.message) || "Bir hata oluştu.";
     }
 
     loadPaymentForm();
